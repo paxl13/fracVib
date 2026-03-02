@@ -23,7 +23,15 @@ export default function Home() {
   const [panelOpen, setPanelOpen] = useState(true);
 
   const handleParamsChange = useCallback((update: Partial<FractalParams>) => {
-    setParams((prev) => ({ ...prev, ...update }));
+    setParams((prev) => {
+      const next = { ...prev, ...update };
+      // Auto-adjust iterations based on zoom (unless user explicitly set them)
+      if (update.zoom !== undefined && update.maxIterations === undefined) {
+        const autoIter = Math.round(200 + 100 * Math.log2(Math.max(1, next.zoom)));
+        next.maxIterations = Math.max(prev.maxIterations, Math.min(autoIter, 10000));
+      }
+      return next;
+    });
   }, []);
 
   return (

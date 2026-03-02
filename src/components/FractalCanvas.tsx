@@ -312,7 +312,7 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
       {/* Bottom-right: controls + HUD stacked vertically */}
       <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2">
         {/* On-canvas zoom controls */}
-        <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex flex-col items-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {autoZoom && (
             <div className="flex flex-col items-center bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 gap-1">
               <input
