@@ -29,7 +29,14 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   const currentZoomRef = useRef(params.zoom);
   const zoomCenterRef = useRef({ mx: 0.5, my: 0.5 });
 
-  useFractalRenderer(canvasRef, params);
+  const { activeBackend } = useFractalRenderer(canvasRef, params);
+
+  // Compute complex plane bounds
+  const scale = 4 / (params.width * params.zoom);
+  const xMin = params.centerX - (params.width / 2) * scale;
+  const xMax = params.centerX + (params.width / 2) * scale;
+  const yMin = params.centerY - (params.height / 2) * scale;
+  const yMax = params.centerY + (params.height / 2) * scale;
 
   // Sync zoom refs when zoom changes externally (e.g. from panel buttons)
   useEffect(() => {
@@ -122,9 +129,24 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
       }
     };
 
+    const handleDblClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      zoomCenterRef.current = {
+        mx: (e.clientX - rect.left) / rect.width,
+        my: (e.clientY - rect.top) / rect.height,
+      };
+      targetZoomRef.current *= 3;
+
+      if (!zoomAnimRef.current) {
+        zoomAnimRef.current = requestAnimationFrame(tick);
+      }
+    };
+
     canvas.addEventListener("wheel", handleWheel, { passive: false });
+    canvas.addEventListener("dblclick", handleDblClick);
     return () => {
       canvas.removeEventListener("wheel", handleWheel);
+      canvas.removeEventListener("dblclick", handleDblClick);
       if (zoomAnimRef.current) {
         cancelAnimationFrame(zoomAnimRef.current);
         zoomAnimRef.current = 0;
@@ -248,9 +270,15 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       />
-      <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none">
+      <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none leading-relaxed text-right">
+        <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
+        {" "}&middot;{" "}
         ({params.centerX.toFixed(6)}, {params.centerY.toFixed(6)}) &middot; zoom{" "}
         {params.zoom < 1000 ? params.zoom.toFixed(1) : params.zoom.toExponential(2)}x
+        <br />
+        <span className="text-white/40">
+          x:[{xMin.toFixed(4)}, {xMax.toFixed(4)}] y:[{yMin.toFixed(4)}, {yMax.toFixed(4)}]
+        </span>
       </div>
     </div>
   );

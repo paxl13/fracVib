@@ -1,96 +1,100 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import type { FractalParams, WorkerMessage, WorkerResult } from "./fractal-worker";
+import { useEffect, useRef, useState } from "react";
+import type { FractalParams } from "./fractal-worker";
+import type { BackendType, FractalRenderer } from "./renderers/types";
+import { detectBestBackend } from "./renderers/detect-backend";
 
-function getWorkerCount() {
-  if (typeof navigator !== "undefined" && navigator.hardwareConcurrency) {
-    return Math.min(navigator.hardwareConcurrency, 16);
+async function createRenderer(backend: BackendType): Promise<FractalRenderer> {
+  switch (backend) {
+    case "webgpu": {
+      const { WebGPURenderer } = await import("./renderers/webgpu-renderer");
+      return new WebGPURenderer();
+    }
+    case "webgl": {
+      const { WebGLRenderer } = await import("./renderers/webgl-renderer");
+      return new WebGLRenderer();
+    }
+    default: {
+      const { WorkerRenderer } = await import("./renderers/worker-renderer");
+      return new WorkerRenderer();
+    }
   }
-  return 4;
 }
 
 export function useFractalRenderer(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   params: FractalParams
 ) {
-  const workersRef = useRef<Worker[]>([]);
-  const renderIdRef = useRef(0);
+  const rendererRef = useRef<FractalRenderer | null>(null);
   const rafRef = useRef<number>(0);
   const lastRenderedRef = useRef<string>("");
+  const [activeBackend, setActiveBackend] = useState<BackendType | null>(null);
 
+  // Initialize renderer: detect best backend + fallback chain
   useEffect(() => {
-    const workers: Worker[] = [];
-    const count = getWorkerCount();
-    for (let i = 0; i < count; i++) {
-      const worker = new Worker(
-        new URL("./fractal-worker.ts", import.meta.url),
-        { type: "module" }
-      );
-      workers.push(worker);
+    let disposed = false;
+
+    async function initRenderer() {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const bestBackend = await detectBestBackend();
+
+      // Try backends in order: best → fallback
+      const fallbackChain: BackendType[] =
+        bestBackend === "webgpu"
+          ? ["webgpu", "webgl", "cpu"]
+          : bestBackend === "webgl"
+            ? ["webgl", "cpu"]
+            : ["cpu"];
+
+      for (const backend of fallbackChain) {
+        if (disposed) return;
+        try {
+          const renderer = await createRenderer(backend);
+          await renderer.init(canvas);
+          if (disposed) {
+            renderer.dispose();
+            return;
+          }
+          rendererRef.current = renderer;
+          setActiveBackend(renderer.backend);
+          // Trigger initial render
+          lastRenderedRef.current = "";
+          return;
+        } catch (err) {
+          console.warn(`Backend ${backend} failed, trying next...`, err);
+        }
+      }
     }
-    workersRef.current = workers;
+
+    initRenderer();
+
     return () => {
-      workers.forEach((w) => w.terminate());
-      workersRef.current = [];
+      disposed = true;
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+        rendererRef.current = null;
+      }
     };
-  }, []);
+  }, [canvasRef]);
 
-  const render = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const workers = workersRef.current;
-    if (workers.length === 0) return;
-
-    // Skip duplicate renders
-    const key = JSON.stringify(params);
-    if (key === lastRenderedRef.current) return;
-    lastRenderedRef.current = key;
-
-    const renderId = ++renderIdRef.current;
-    const { width, height } = params;
-
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
-
-    const rowsPerWorker = Math.ceil(height / workers.length);
-
-    workers.forEach((worker, i) => {
-      const startRow = i * rowsPerWorker;
-      const endRow = Math.min(startRow + rowsPerWorker, height);
-      if (startRow >= endRow) return;
-
-      worker.onmessage = (e: MessageEvent<WorkerResult>) => {
-        if (renderIdRef.current !== renderId) return;
-
-        const { imageData, startRow: sr, endRow: er } = e.data;
-        const rows = er - sr;
-        if (rows <= 0 || imageData.length !== width * rows * 4) return;
-        const imgData = new ImageData(
-          new Uint8ClampedArray(imageData),
-          width,
-          rows
-        );
-        ctx.putImageData(imgData, 0, sr);
-      };
-
-      const msg: WorkerMessage = { params, startRow, endRow };
-      worker.postMessage(msg);
-    });
-  }, [canvasRef, params]);
-
-  // Debounced render via requestAnimationFrame
+  // Render on param changes
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
-      render();
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+
+      const key = JSON.stringify(params);
+      if (key === lastRenderedRef.current) return;
+      lastRenderedRef.current = key;
+
+      renderer.render(params);
     });
     return () => cancelAnimationFrame(rafRef.current);
-  }, [render]);
+  }, [params]);
 
-  return { render };
+  return { activeBackend };
 }
