@@ -36,7 +36,7 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   const currentZoomRef = useRef(params.zoom);
   const zoomCenterRef = useRef({ mx: 0.5, my: 0.5 });
 
-  const { activeBackend } = useFractalRenderer(canvasRef, params);
+  const { activeBackend, isRendering } = useFractalRenderer(canvasRef, params);
 
   // Compute complex plane bounds
   const scale = 4 / (params.width * params.zoom);
@@ -304,13 +304,13 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
 
       {/* Center crosshair — visible on hover */}
       {isHovering && (
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
           <div className="w-2 h-2 rounded-full bg-white/60 ring-1 ring-black/40" />
         </div>
       )}
 
       {/* Bottom-right: controls + HUD stacked vertically */}
-      <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2">
+      <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end gap-2">
         {/* On-canvas zoom controls */}
         <div className="flex flex-col items-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
           {autoZoom && (
@@ -358,6 +358,9 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
         {/* HUD */}
         <div className="bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none leading-relaxed text-right">
           <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
+          {isRendering && (
+            <span className="inline-block w-1.5 h-1.5 ml-1 rounded-full bg-amber-400 animate-pulse align-middle" />
+          )}
           {" "}&middot;{" "}
           ({params.centerX.toFixed(6)}, {params.centerY.toFixed(6)}) &middot; zoom{" "}
           {params.zoom < 1000

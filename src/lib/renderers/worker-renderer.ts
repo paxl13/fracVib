@@ -15,6 +15,7 @@ export class WorkerRenderer implements FractalRenderer {
   canvasEl: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private renderId = 0;
+  onComplete: (() => void) | null = null;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     this.canvasEl = canvas;
@@ -42,11 +43,13 @@ export class WorkerRenderer implements FractalRenderer {
     if (canvas.height !== height) canvas.height = height;
 
     const rowsPerWorker = Math.ceil(height / this.workers.length);
+    let pending = 0;
 
     this.workers.forEach((worker, i) => {
       const startRow = i * rowsPerWorker;
       const endRow = Math.min(startRow + rowsPerWorker, height);
       if (startRow >= endRow) return;
+      pending++;
 
       worker.onmessage = (e: MessageEvent<WorkerResult>) => {
         if (this.renderId !== renderId) return;
@@ -59,6 +62,10 @@ export class WorkerRenderer implements FractalRenderer {
           rows
         );
         ctx.putImageData(imgData, 0, sr);
+        pending--;
+        if (pending === 0 && this.onComplete) {
+          this.onComplete();
+        }
       };
 
       const msg: WorkerMessage = { params, startRow, endRow };

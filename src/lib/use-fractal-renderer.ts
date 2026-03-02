@@ -36,6 +36,7 @@ export function useFractalRenderer(
   const rafRef = useRef<number>(0);
   const lastRenderedRef = useRef<string>("");
   const [activeBackend, setActiveBackend] = useState<BackendType | null>(null);
+  const [isRendering, setIsRendering] = useState(false);
   const readyRef = useRef(false);
 
   // Initialize both GPU and CPU renderers
@@ -140,20 +141,25 @@ export function useFractalRenderer(
           container.appendChild(offscreen);
         }
         offscreen.style.display = "";
-        mainCanvas.style.display = "none";
+        // Keep main canvas in layout (for events) but invisible
+        mainCanvas.style.opacity = "0";
 
-        renderer.render(params);
+        setIsRendering(true);
+        const cpu = cpuRef.current!;
+        cpu.onComplete = () => setIsRendering(false);
+        cpu.render(params);
       } else {
         // GPU: hide CPU canvas, show main
-        mainCanvas.style.display = "";
+        mainCanvas.style.opacity = "";
         const offscreen = cpuCanvasRef.current;
         if (offscreen) offscreen.style.display = "none";
 
+        setIsRendering(false);
         renderer.render(params);
       }
     });
     return () => cancelAnimationFrame(rafRef.current);
   }, [params, activeBackend, canvasRef]);
 
-  return { activeBackend };
+  return { activeBackend, isRendering };
 }
