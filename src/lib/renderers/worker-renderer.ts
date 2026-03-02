@@ -12,12 +12,12 @@ export class WorkerRenderer implements FractalRenderer {
   readonly backend = "cpu" as const;
 
   private workers: Worker[] = [];
-  private canvas: HTMLCanvasElement | null = null;
+  canvasEl: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private renderId = 0;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
-    this.canvas = canvas;
+    this.canvasEl = canvas;
     this.ctx = canvas.getContext("2d");
     const count = getWorkerCount();
     for (let i = 0; i < count; i++) {
@@ -30,7 +30,7 @@ export class WorkerRenderer implements FractalRenderer {
   }
 
   render(params: FractalParams): void {
-    const canvas = this.canvas;
+    const canvas = this.canvasEl;
     const ctx = this.ctx;
     if (!canvas || !ctx) return;
     if (this.workers.length === 0) return;
@@ -74,7 +74,7 @@ export class WorkerRenderer implements FractalRenderer {
   dispose(): void {
     this.workers.forEach((w) => w.terminate());
     this.workers = [];
-    this.canvas = null;
+    this.canvasEl = null;
     this.ctx = null;
   }
 }

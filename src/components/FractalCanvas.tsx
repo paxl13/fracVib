@@ -360,7 +360,9 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
           <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
           {" "}&middot;{" "}
           ({params.centerX.toFixed(6)}, {params.centerY.toFixed(6)}) &middot; zoom{" "}
-          {params.zoom < 1000 ? params.zoom.toFixed(1) : params.zoom.toExponential(2)}x
+          {params.zoom < 1000
+            ? params.zoom.toFixed(1)
+            : Math.round(params.zoom).toLocaleString()}x
           <br />
           <span className="text-white/40">
             x:[{xMin.toFixed(4)}, {xMax.toFixed(4)}] y:[{yMin.toFixed(4)}, {yMax.toFixed(4)}]
