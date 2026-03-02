@@ -1,5 +1,7 @@
 export type FractalType = "mandelbrot" | "julia" | "burningship";
 
+export type RenderMode = "auto" | "gpu" | "cpu";
+
 export interface FractalParams {
   type: FractalType;
   width: number;
@@ -11,18 +13,27 @@ export interface FractalParams {
   juliaReal: number;
   juliaImag: number;
   colorScheme: string;
+  cpuResolution: number;
+  renderMode: RenderMode;
+  fixedResolution: boolean;
+  fixedWidth: number;
+  fixedHeight: number;
+  lockIterations: boolean;
+  binaryColor: boolean;
 }
 
 export interface WorkerMessage {
   params: FractalParams;
   startRow: number;
   endRow: number;
+  renderId: number;
 }
 
 export interface WorkerResult {
   imageData: Uint8ClampedArray;
   startRow: number;
   endRow: number;
+  renderId: number;
 }
 
 function computeMandelbrot(cx: number, cy: number, maxIter: number): number {
@@ -132,12 +143,12 @@ function getColorFunction(scheme: string): ColorFn {
 }
 
 self.onmessage = function (e: MessageEvent<WorkerMessage>) {
-  const { params, startRow, endRow } = e.data;
-  const { type, width, height, centerX, centerY, zoom, maxIterations, juliaReal, juliaImag, colorScheme } = params;
+  const { params, startRow, endRow, renderId } = e.data;
+  const { type, width, height, centerX, centerY, zoom, maxIterations, juliaReal, juliaImag, colorScheme, binaryColor } = params;
 
   const rowCount = endRow - startRow;
   const data = new Uint8ClampedArray(width * rowCount * 4);
-  const colorFn = getColorFunction(colorScheme);
+  const colorFn = binaryColor ? null : getColorFunction(colorScheme);
   const scale = 4 / (width * zoom);
 
   for (let py = startRow; py < endRow; py++) {
@@ -159,14 +170,20 @@ self.onmessage = function (e: MessageEvent<WorkerMessage>) {
       }
 
       const idx = ((py - startRow) * width + px) * 4;
-      if (smoothIter < 0) {
+      if (binaryColor) {
+        const v = smoothIter < 0 ? 0 : 255;
+        data[idx] = v;
+        data[idx + 1] = v;
+        data[idx + 2] = v;
+        data[idx + 3] = 255;
+      } else if (smoothIter < 0) {
         data[idx] = 0;
         data[idx + 1] = 0;
         data[idx + 2] = 0;
         data[idx + 3] = 255;
       } else {
         const t = (smoothIter % 64) / 64;
-        const [r, g, b] = colorFn(t);
+        const [r, g, b] = colorFn!(t);
         data[idx] = r;
         data[idx + 1] = g;
         data[idx + 2] = b;
@@ -175,6 +192,6 @@ self.onmessage = function (e: MessageEvent<WorkerMessage>) {
     }
   }
 
-  const result: WorkerResult = { imageData: data, startRow, endRow };
+  const result: WorkerResult = { imageData: data, startRow, endRow, renderId };
   (self as unknown as Worker).postMessage(result, [data.buffer]);
 };

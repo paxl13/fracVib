@@ -51,8 +51,10 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
     targetZoomRef.current = params.zoom;
   }, [params.zoom]);
 
-  // Resize canvas to fill container
+  // Resize canvas to fill container (skipped in fixed resolution mode)
   useEffect(() => {
+    if (params.fixedResolution) return;
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -70,7 +72,14 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
 
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [params.fixedResolution]);
+
+  // Apply fixed resolution when enabled
+  useEffect(() => {
+    if (params.fixedResolution) {
+      onParamsChangeRef.current({ width: params.fixedWidth, height: params.fixedHeight });
+    }
+  }, [params.fixedResolution, params.fixedWidth, params.fixedHeight]);
 
   // Zoom animation loop (reads from refs, no stale closure issues)
   useEffect(() => {
@@ -123,11 +132,7 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      zoomCenterRef.current = {
-        mx: (e.clientX - rect.left) / rect.width,
-        my: (e.clientY - rect.top) / rect.height,
-      };
+      zoomCenterRef.current = { mx: 0.5, my: 0.5 };
       const factor = Math.pow(1.001, -e.deltaY);
       targetZoomRef.current *= factor;
 
@@ -172,8 +177,8 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
       const p = paramsRef.current;
-      const factor = Math.pow(zoomRateRef.current, dt);
-      onParamsChangeRef.current({ zoom: p.zoom * factor });
+      const newZoom = p.zoom * Math.pow(zoomRateRef.current, dt);
+      onParamsChangeRef.current({ zoom: newZoom });
       rafId = requestAnimationFrame(autoTick);
     }
 
@@ -286,14 +291,18 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full relative group"
+      className="w-full h-full relative"
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => { setIsHovering(false); handleMouseUp(); }}
     >
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
-        style={{ cursor: isDragging ? "grabbing" : "grab", imageRendering: "pixelated" }}
+        style={{
+          cursor: isDragging ? "grabbing" : "grab",
+          imageRendering: "pixelated",
+          ...(params.fixedResolution ? { objectFit: "contain" as const } : {}),
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -305,14 +314,14 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
       {/* Center crosshair — visible on hover */}
       {isHovering && (
         <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-white/60 ring-1 ring-black/40" />
+          <div className="w-2.5 h-2.5 rounded-full bg-white/70 ring-2 ring-black/50 shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
         </div>
       )}
 
       {/* Bottom-right: controls + HUD stacked vertically */}
       <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end gap-2">
         {/* On-canvas zoom controls */}
-        <div className="flex flex-col items-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className={`flex flex-col items-end gap-1.5 transition-opacity ${isHovering ? "opacity-100" : "opacity-0"}`}>
           {autoZoom && (
             <div className="flex flex-col items-center bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 gap-1">
               <input

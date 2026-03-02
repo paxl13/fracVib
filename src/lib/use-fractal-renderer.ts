@@ -7,7 +7,7 @@ import { detectBestBackend } from "./renderers/detect-backend";
 import type { WorkerRenderer } from "./renderers/worker-renderer";
 
 // float32 mantissa limit — beyond this zoom, GPU produces block artifacts
-const GPU_ZOOM_LIMIT = 10_000;
+export const GPU_ZOOM_LIMIT = 10_000;
 
 async function createRenderer(backend: BackendType): Promise<FractalRenderer> {
   switch (backend) {
@@ -94,14 +94,13 @@ export function useFractalRenderer(
       gpuRef.current = null;
       cpuRef.current?.dispose();
       cpuRef.current = null;
-      // Remove CPU canvas from DOM if present
       cpuCanvasRef.current?.remove();
       cpuCanvasRef.current = null;
       readyRef.current = false;
     };
   }, [canvasRef]);
 
-  // Render: pick GPU or CPU based on zoom
+  // Render: pick GPU or CPU based on renderMode + zoom
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
@@ -110,7 +109,18 @@ export function useFractalRenderer(
       const mainCanvas = canvasRef.current;
       if (!mainCanvas) return;
 
-      const useGpu = gpuRef.current && params.zoom <= GPU_ZOOM_LIMIT;
+      // Decide backend based on renderMode
+      const mode = params.renderMode;
+      let useGpu: boolean;
+      if (mode === "gpu") {
+        useGpu = !!gpuRef.current;
+      } else if (mode === "cpu") {
+        useGpu = false;
+      } else {
+        // auto: use GPU up to zoom limit
+        useGpu = !!gpuRef.current && params.zoom <= GPU_ZOOM_LIMIT;
+      }
+
       const renderer = useGpu ? gpuRef.current! : cpuRef.current;
       if (!renderer) return;
 
@@ -135,6 +145,8 @@ export function useFractalRenderer(
           offscreen.className = mainCanvas.className;
           offscreen.style.position = "absolute";
           offscreen.style.inset = "0";
+          offscreen.style.width = "100%";
+          offscreen.style.height = "100%";
           offscreen.style.imageRendering = "pixelated";
           offscreen.style.pointerEvents = "none";
           offscreen.style.zIndex = "1";
@@ -144,10 +156,18 @@ export function useFractalRenderer(
         // Keep main canvas in layout (for events) but invisible
         mainCanvas.style.opacity = "0";
 
+        // Reduce resolution for CPU rendering
+        const s = params.cpuResolution;
+        const cpuParams = {
+          ...params,
+          width: Math.floor(params.width * s),
+          height: Math.floor(params.height * s),
+        };
+
         setIsRendering(true);
         const cpu = cpuRef.current!;
         cpu.onComplete = () => setIsRendering(false);
-        cpu.render(params);
+        cpu.render(cpuParams);
       } else {
         // GPU: hide CPU canvas, show main
         mainCanvas.style.opacity = "";

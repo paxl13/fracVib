@@ -15,6 +15,9 @@ export class WorkerRenderer implements FractalRenderer {
   canvasEl: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
   private renderId = 0;
+  private pending = 0;
+  private busy = false;
+  private queuedParams: FractalParams | null = null;
   onComplete: (() => void) | null = null;
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
@@ -26,11 +29,57 @@ export class WorkerRenderer implements FractalRenderer {
         new URL("../fractal-worker.ts", import.meta.url),
         { type: "module" }
       );
+      // Set handler once — uses echoed renderId to ignore stale results
+      worker.onmessage = (e: MessageEvent<WorkerResult>) => {
+        this.handleResult(e.data);
+      };
       this.workers.push(worker);
     }
   }
 
+  private handleResult(data: WorkerResult): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+
+    // Ignore results from old renders
+    if (data.renderId !== this.renderId) return;
+
+    const { imageData, startRow: sr, endRow: er } = data;
+    const rows = er - sr;
+    const width = this.canvasEl?.width ?? 0;
+    if (rows <= 0 || imageData.length !== width * rows * 4) return;
+
+    const imgData = new ImageData(
+      new Uint8ClampedArray(imageData),
+      width,
+      rows
+    );
+    ctx.putImageData(imgData, 0, sr);
+
+    this.pending--;
+    if (this.pending === 0) {
+      this.busy = false;
+      if (this.onComplete) this.onComplete();
+
+      // If params were queued while busy, render them now
+      if (this.queuedParams) {
+        const next = this.queuedParams;
+        this.queuedParams = null;
+        this.startRender(next);
+      }
+    }
+  }
+
   render(params: FractalParams): void {
+    if (this.busy) {
+      // Already rendering — queue the latest params
+      this.queuedParams = params;
+      return;
+    }
+    this.startRender(params);
+  }
+
+  private startRender(params: FractalParams): void {
     const canvas = this.canvasEl;
     const ctx = this.ctx;
     if (!canvas || !ctx) return;
@@ -42,33 +91,18 @@ export class WorkerRenderer implements FractalRenderer {
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
 
+    this.busy = true;
+    this.pending = 0;
+
     const rowsPerWorker = Math.ceil(height / this.workers.length);
-    let pending = 0;
 
     this.workers.forEach((worker, i) => {
       const startRow = i * rowsPerWorker;
       const endRow = Math.min(startRow + rowsPerWorker, height);
       if (startRow >= endRow) return;
-      pending++;
+      this.pending++;
 
-      worker.onmessage = (e: MessageEvent<WorkerResult>) => {
-        if (this.renderId !== renderId) return;
-        const { imageData, startRow: sr, endRow: er } = e.data;
-        const rows = er - sr;
-        if (rows <= 0 || imageData.length !== width * rows * 4) return;
-        const imgData = new ImageData(
-          new Uint8ClampedArray(imageData),
-          width,
-          rows
-        );
-        ctx.putImageData(imgData, 0, sr);
-        pending--;
-        if (pending === 0 && this.onComplete) {
-          this.onComplete();
-        }
-      };
-
-      const msg: WorkerMessage = { params, startRow, endRow };
+      const msg: WorkerMessage = { params, startRow, endRow, renderId };
       worker.postMessage(msg);
     });
   }

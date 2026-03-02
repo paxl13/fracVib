@@ -16,6 +16,13 @@ const DEFAULT_PARAMS: FractalParams = {
   juliaReal: -0.7269,
   juliaImag: 0.1889,
   colorScheme: "classic",
+  cpuResolution: 0.5,
+  renderMode: "auto",
+  fixedResolution: false,
+  fixedWidth: 128,
+  fixedHeight: 64,
+  lockIterations: false,
+  binaryColor: false,
 };
 
 export default function Home() {
@@ -25,8 +32,8 @@ export default function Home() {
   const handleParamsChange = useCallback((update: Partial<FractalParams>) => {
     setParams((prev) => {
       const next = { ...prev, ...update };
-      // Auto-adjust iterations based on zoom (unless user explicitly set them)
-      if (update.zoom !== undefined && update.maxIterations === undefined) {
+      // Auto-adjust iterations based on zoom (unless user explicitly set them or locked)
+      if (update.zoom !== undefined && update.maxIterations === undefined && !next.lockIterations) {
         const autoIter = Math.round(200 + 100 * Math.log2(Math.max(1, next.zoom)));
         next.maxIterations = Math.max(prev.maxIterations, Math.min(autoIter, 10000));
       }
