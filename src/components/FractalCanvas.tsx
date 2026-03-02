@@ -13,6 +13,11 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);
+  const [autoZoom, setAutoZoom] = useState(false);
+  const [zoomRate, setZoomRate] = useState(1.5); // multiplier per second
+  const autoZoomRef = useRef(false);
+  const zoomRateRef = useRef(1.5);
   const dragStart = useRef({ x: 0, y: 0, cx: 0, cy: 0 });
 
   // Refs for latest values (avoids stale closures in animation loop)
@@ -21,6 +26,8 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   useEffect(() => {
     paramsRef.current = params;
     onParamsChangeRef.current = onParamsChange;
+    autoZoomRef.current = autoZoom;
+    zoomRateRef.current = zoomRate;
   });
 
   // Smooth zoom state
@@ -154,6 +161,26 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
     };
   }, []);
 
+  // Continuous auto-zoom loop
+  useEffect(() => {
+    if (!autoZoom) return;
+    let lastTime = performance.now();
+    let rafId = 0;
+
+    function autoTick(now: number) {
+      if (!autoZoomRef.current) return;
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      const p = paramsRef.current;
+      const factor = Math.pow(zoomRateRef.current, dt);
+      onParamsChangeRef.current({ zoom: p.zoom * factor });
+      rafId = requestAnimationFrame(autoTick);
+    }
+
+    rafId = requestAnimationFrame(autoTick);
+    return () => cancelAnimationFrame(rafId);
+  }, [autoZoom]);
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
@@ -257,7 +284,12 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative group"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => { setIsHovering(false); handleMouseUp(); }}
+    >
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
@@ -265,11 +297,63 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       />
+
+      {/* Center crosshair — visible on hover */}
+      {isHovering && (
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+          <div className="w-2 h-2 rounded-full bg-white/60 ring-1 ring-black/40" />
+        </div>
+      )}
+
+      {/* On-canvas zoom controls */}
+      <div className="absolute bottom-14 right-3 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={() => onParamsChange({ zoom: params.zoom * 2 })}
+          className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          onClick={() => onParamsChange({ zoom: params.zoom / 2 })}
+          className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
+          title="Zoom out"
+        >
+          &minus;
+        </button>
+        <button
+          onClick={() => setAutoZoom((v) => !v)}
+          className={`w-9 h-9 rounded-lg backdrop-blur-sm flex items-center justify-center text-lg select-none ${
+            autoZoom
+              ? "bg-indigo-500/70 text-white hover:bg-indigo-400/70"
+              : "bg-black/50 text-white/80 hover:bg-white/20"
+          }`}
+          title={autoZoom ? "Stop auto-zoom" : "Start continuous zoom"}
+        >
+          {autoZoom ? "\u25A0" : "\u25B6"}
+        </button>
+        {autoZoom && (
+          <div className="flex flex-col items-center bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 gap-1">
+            <span className="text-[10px] text-white/50 font-mono">{zoomRate.toFixed(1)}x</span>
+            <input
+              type="range"
+              min="1.1"
+              max="5"
+              step="0.1"
+              value={zoomRate}
+              onChange={(e) => setZoomRate(parseFloat(e.target.value))}
+              className="w-20 accent-indigo-400"
+              style={{ writingMode: "vertical-lr", direction: "rtl", height: 80 }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* HUD */}
       <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none leading-relaxed text-right">
         <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
         {" "}&middot;{" "}

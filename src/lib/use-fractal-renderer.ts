@@ -80,7 +80,7 @@ export function useFractalRenderer(
     };
   }, [canvasRef]);
 
-  // Render on param changes
+  // Render on param changes or backend init
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
@@ -94,7 +94,7 @@ export function useFractalRenderer(
       renderer.render(params);
     });
     return () => cancelAnimationFrame(rafRef.current);
-  }, [params]);
+  }, [params, activeBackend]);
 
   return { activeBackend };
 }
