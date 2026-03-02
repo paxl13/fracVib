@@ -143,7 +143,7 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
             <input
               type="range"
               min="50"
-              max="2000"
+              max="10000"
               step="50"
               value={params.maxIterations}
               onChange={(e) => onParamsChange({ maxIterations: parseInt(e.target.value) })}

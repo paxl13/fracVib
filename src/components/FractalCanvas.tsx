@@ -309,60 +309,63 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
         </div>
       )}
 
-      {/* On-canvas zoom controls */}
-      <div className="absolute bottom-14 right-3 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={() => onParamsChange({ zoom: params.zoom * 2 })}
-          className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
-          title="Zoom in"
-        >
-          +
-        </button>
-        <button
-          onClick={() => onParamsChange({ zoom: params.zoom / 2 })}
-          className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
-          title="Zoom out"
-        >
-          &minus;
-        </button>
-        <button
-          onClick={() => setAutoZoom((v) => !v)}
-          className={`w-9 h-9 rounded-lg backdrop-blur-sm flex items-center justify-center text-lg select-none ${
-            autoZoom
-              ? "bg-indigo-500/70 text-white hover:bg-indigo-400/70"
-              : "bg-black/50 text-white/80 hover:bg-white/20"
-          }`}
-          title={autoZoom ? "Stop auto-zoom" : "Start continuous zoom"}
-        >
-          {autoZoom ? "\u25A0" : "\u25B6"}
-        </button>
-        {autoZoom && (
-          <div className="flex flex-col items-center bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 gap-1">
-            <span className="text-[10px] text-white/50 font-mono">{zoomRate.toFixed(1)}x</span>
-            <input
-              type="range"
-              min="1.1"
-              max="5"
-              step="0.1"
-              value={zoomRate}
-              onChange={(e) => setZoomRate(parseFloat(e.target.value))}
-              className="w-20 accent-indigo-400"
-              style={{ writingMode: "vertical-lr", direction: "rtl", height: 80 }}
-            />
-          </div>
-        )}
-      </div>
+      {/* Bottom-right: controls + HUD stacked vertically */}
+      <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2">
+        {/* On-canvas zoom controls */}
+        <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {autoZoom && (
+            <div className="flex flex-col items-center bg-black/50 backdrop-blur-sm rounded-lg px-1.5 py-2 gap-1">
+              <input
+                type="range"
+                min="1.1"
+                max="5"
+                step="0.1"
+                value={zoomRate}
+                onChange={(e) => setZoomRate(parseFloat(e.target.value))}
+                className="w-20 accent-indigo-400"
+                style={{ writingMode: "vertical-lr", direction: "rtl", height: 80 }}
+              />
+              <span className="text-[10px] text-white/50 font-mono">{zoomRate.toFixed(1)}x/s</span>
+            </div>
+          )}
+          <button
+            onClick={() => onParamsChange({ zoom: params.zoom * 2 })}
+            className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            onClick={() => onParamsChange({ zoom: params.zoom / 2 })}
+            className="w-9 h-9 rounded-lg bg-black/50 backdrop-blur-sm text-white/80 hover:bg-white/20 flex items-center justify-center text-lg font-mono select-none"
+            title="Zoom out"
+          >
+            &minus;
+          </button>
+          <button
+            onClick={() => setAutoZoom((v) => !v)}
+            className={`w-9 h-9 rounded-lg backdrop-blur-sm flex items-center justify-center text-lg select-none ${
+              autoZoom
+                ? "bg-indigo-500/70 text-white hover:bg-indigo-400/70"
+                : "bg-black/50 text-white/80 hover:bg-white/20"
+            }`}
+            title={autoZoom ? "Stop auto-zoom" : "Start continuous zoom"}
+          >
+            {autoZoom ? "\u25A0" : "\u25B6"}
+          </button>
+        </div>
 
-      {/* HUD */}
-      <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none leading-relaxed text-right">
-        <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
-        {" "}&middot;{" "}
-        ({params.centerX.toFixed(6)}, {params.centerY.toFixed(6)}) &middot; zoom{" "}
-        {params.zoom < 1000 ? params.zoom.toFixed(1) : params.zoom.toExponential(2)}x
-        <br />
-        <span className="text-white/40">
-          x:[{xMin.toFixed(4)}, {xMax.toFixed(4)}] y:[{yMin.toFixed(4)}, {yMax.toFixed(4)}]
-        </span>
+        {/* HUD */}
+        <div className="bg-black/60 backdrop-blur-sm text-xs text-white/70 px-2.5 py-1.5 rounded-lg font-mono pointer-events-none select-none leading-relaxed text-right">
+          <span className="text-white/50">{activeBackend ? activeBackend.toUpperCase() : "..."}</span>
+          {" "}&middot;{" "}
+          ({params.centerX.toFixed(6)}, {params.centerY.toFixed(6)}) &middot; zoom{" "}
+          {params.zoom < 1000 ? params.zoom.toFixed(1) : params.zoom.toExponential(2)}x
+          <br />
+          <span className="text-white/40">
+            x:[{xMin.toFixed(4)}, {xMax.toFixed(4)}] y:[{yMin.toFixed(4)}, {yMax.toFixed(4)}]
+          </span>
+        </div>
       </div>
     </div>
   );
