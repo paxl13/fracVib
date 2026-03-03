@@ -1,13 +1,63 @@
-"use client";
-
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { FractalType, RenderMode, FractalParams } from "@/lib/fractal-worker";
 
 interface Props {
   params: FractalParams;
   onParamsChange: (p: Partial<FractalParams>) => void;
-  isOpen: boolean;
-  onToggle: () => void;
 }
+
+/* ── NumberInput ──────────────────────────────────────────────────── */
+
+interface NumberInputProps {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  className?: string;
+}
+
+function NumberInput({ value, onChange, min, max, step, className }: NumberInputProps) {
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync from props when not focused
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+
+  const commit = useCallback(() => {
+    const parsed = step !== undefined && step % 1 !== 0
+      ? parseFloat(text)
+      : parseInt(text, 10);
+    if (isNaN(parsed)) {
+      setText(String(value));
+      return;
+    }
+    let clamped = parsed;
+    if (min !== undefined) clamped = Math.max(min, clamped);
+    if (max !== undefined) clamped = Math.min(max, clamped);
+    onChange(clamped);
+    setText(String(clamped));
+  }, [text, value, onChange, min, max, step]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="decimal"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={(e) => { if (e.key === "Enter") { commit(); inputRef.current?.blur(); } }}
+      className={className}
+    />
+  );
+}
+
+/* ── Constants ────────────────────────────────────────────────────── */
 
 const FRACTAL_TYPES: { value: FractalType; label: string; description: string }[] = [
   { value: "mandelbrot", label: "Mandelbrot", description: "z = z² + c" },
@@ -34,38 +84,80 @@ const PRESETS: { label: string; params: Partial<FractalParams> }[] = [
   { label: "Burning Ship", params: { type: "burningship", centerX: -1.762, centerY: -0.028, zoom: 30, maxIterations: 500 } },
 ];
 
-export default function ControlPanel({ params, onParamsChange, isOpen, onToggle }: Props) {
-  return (
-    <>
-      {/* Toggle button */}
-      <button
-        onClick={onToggle}
-        className="absolute top-4 left-4 z-20 bg-black/70 backdrop-blur-sm border border-white/10 text-white p-2 rounded-lg hover:bg-white/10 transition-colors"
-        title={isOpen ? "Fermer le panneau" : "Ouvrir le panneau"}
-      >
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          {isOpen ? (
-            <>
-              <line x1="4" y1="4" x2="16" y2="16" />
-              <line x1="16" y1="4" x2="4" y2="16" />
-            </>
-          ) : (
-            <>
-              <line x1="3" y1="5" x2="17" y2="5" />
-              <line x1="3" y1="10" x2="17" y2="10" />
-              <line x1="3" y1="15" x2="17" y2="15" />
-            </>
-          )}
-        </svg>
-      </button>
+const INPUT_CLASS = "w-full bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-right text-white font-mono text-xs focus:outline-none focus:border-indigo-400/60";
+const INPUT_SMALL_CLASS = "w-20 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-right text-white font-mono text-xs focus:outline-none focus:border-indigo-400/60";
 
-      {/* Panel */}
-      <div
-        className={`absolute top-0 left-0 z-10 h-full w-80 bg-black/80 backdrop-blur-xl border-r border-white/10
-          transform transition-transform duration-300 ease-in-out overflow-y-auto
-          ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
-      >
-        <div className="pt-16 px-5 pb-6 space-y-6">
+/* ── ControlPanel ─────────────────────────────────────────────────── */
+
+export default function ControlPanel({ params, onParamsChange }: Props) {
+  // Derive boundaries from params
+  const scale = 4 / (params.width * params.zoom);
+  const derivedXMin = params.centerX - (params.width / 2) * scale;
+  const derivedXMax = params.centerX + (params.width / 2) * scale;
+  const derivedYMin = params.centerY - (params.height / 2) * scale;
+  const derivedYMax = params.centerY + (params.height / 2) * scale;
+
+  // Local boundary editing state — only pushed on "Appliquer"
+  const [editBounds, setEditBounds] = useState({ xMin: "", xMax: "", yMin: "", yMax: "" });
+  const [boundsEdited, setBoundsEdited] = useState(false);
+  const prevDerivedRef = useRef({ xMin: 0, xMax: 0, yMin: 0, yMax: 0 });
+
+  // Sync from derived values when not actively editing
+  const derived = {
+    xMin: parseFloat(derivedXMin.toFixed(10)),
+    xMax: parseFloat(derivedXMax.toFixed(10)),
+    yMin: parseFloat(derivedYMin.toFixed(10)),
+    yMax: parseFloat(derivedYMax.toFixed(10)),
+  };
+  if (
+    !boundsEdited && (
+      derived.xMin !== prevDerivedRef.current.xMin ||
+      derived.xMax !== prevDerivedRef.current.xMax ||
+      derived.yMin !== prevDerivedRef.current.yMin ||
+      derived.yMax !== prevDerivedRef.current.yMax
+    )
+  ) {
+    prevDerivedRef.current = derived;
+    setEditBounds({
+      xMin: String(derived.xMin),
+      xMax: String(derived.xMax),
+      yMin: String(derived.yMin),
+      yMax: String(derived.yMax),
+    });
+  }
+
+  const updateBound = useCallback((key: keyof typeof editBounds, value: string) => {
+    setEditBounds((prev) => ({ ...prev, [key]: value }));
+    setBoundsEdited(true);
+  }, []);
+
+  const applyBounds = useCallback(() => {
+    const xMin = parseFloat(editBounds.xMin);
+    const xMax = parseFloat(editBounds.xMax);
+    const yMin = parseFloat(editBounds.yMin);
+    const yMax = parseFloat(editBounds.yMax);
+    if (isNaN(xMin) || isNaN(xMax) || isNaN(yMin) || isNaN(yMax)) return;
+    if (xMax <= xMin || yMax <= yMin) return;
+    const centerX = (xMin + xMax) / 2;
+    const centerY = (yMin + yMax) / 2;
+    const zoom = 4 / (xMax - xMin);
+    onParamsChange({ centerX, centerY, zoom });
+    setBoundsEdited(false);
+  }, [editBounds, onParamsChange]);
+
+  const resetBounds = useCallback(() => {
+    setBoundsEdited(false);
+    setEditBounds({
+      xMin: String(derived.xMin),
+      xMax: String(derived.xMax),
+      yMin: String(derived.yMin),
+      yMax: String(derived.yMax),
+    });
+  }, [derived]);
+
+  return (
+    <div className="h-full w-80 bg-black/80 backdrop-blur-xl border-r border-white/10 overflow-y-auto">
+      <div className="px-5 py-6 space-y-6">
           {/* Title */}
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">FracVib</h1>
@@ -146,46 +238,86 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
             </div>
           </section>
 
-          {/* Fixed resolution */}
+          {/* Boundaries */}
+          <section>
+            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Limites</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {(["xMin", "xMax", "yMin", "yMax"] as const).map((key) => (
+                <div key={key}>
+                  <label className="text-[10px] text-white/50 block mb-0.5">{key}</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={editBounds[key]}
+                    onChange={(e) => updateBound(key, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") applyBounds(); }}
+                    className={INPUT_CLASS}
+                  />
+                </div>
+              ))}
+            </div>
+            {boundsEdited && (
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={applyBounds}
+                  className="flex-1 px-2 py-1 rounded-lg text-xs bg-indigo-500/30 border border-indigo-400/40 text-white hover:bg-indigo-500/50 transition-all"
+                >
+                  Appliquer
+                </button>
+                <button
+                  onClick={resetBounds}
+                  className="px-2 py-1 rounded-lg text-xs bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 transition-all"
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
+            <p className="text-[10px] text-white/30 mt-1">Le zoom est dérivé de l'axe X. L'axe Y s'ajuste au ratio.</p>
+          </section>
+
+          {/* Fixed resolution + Binary toggle */}
           <section>
             <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Résolution fixe</h2>
-            <label className="flex items-center gap-2 cursor-pointer mb-2">
-              <input
-                type="checkbox"
-                checked={params.fixedResolution}
-                onChange={(e) => onParamsChange({ fixedResolution: e.target.checked })}
-                className="accent-indigo-500"
-              />
-              <span className="text-xs text-white/70">Activer</span>
-            </label>
+            <div className="flex items-center gap-4 mb-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={params.fixedResolution}
+                  onChange={(e) => onParamsChange({ fixedResolution: e.target.checked })}
+                  className="accent-indigo-500"
+                />
+                <span className="text-xs text-white/70">Activer</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" title="Mode binaire (noir/blanc)">
+                <input
+                  type="checkbox"
+                  checked={params.binaryColor}
+                  onChange={(e) => onParamsChange({ binaryColor: e.target.checked })}
+                  className="accent-indigo-500"
+                />
+                <span className="text-xs text-white/70">Binaire</span>
+              </label>
+            </div>
             {params.fixedResolution && (
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="text-[10px] text-white/50 block mb-0.5">Largeur</label>
-                  <input
-                    type="number"
-                    min="8"
-                    max="4096"
+                  <NumberInput
                     value={params.fixedWidth}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value);
-                      if (!isNaN(v) && v >= 8) onParamsChange({ fixedWidth: v });
-                    }}
-                    className="w-full bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-right text-white font-mono text-xs focus:outline-none focus:border-indigo-400/60"
+                    onChange={(v) => onParamsChange({ fixedWidth: v })}
+                    min={8}
+                    max={4096}
+                    className={INPUT_CLASS}
                   />
                 </div>
                 <div className="flex-1">
                   <label className="text-[10px] text-white/50 block mb-0.5">Hauteur</label>
-                  <input
-                    type="number"
-                    min="8"
-                    max="4096"
+                  <NumberInput
                     value={params.fixedHeight}
-                    onChange={(e) => {
-                      const v = parseInt(e.target.value);
-                      if (!isNaN(v) && v >= 8) onParamsChange({ fixedHeight: v });
-                    }}
-                    className="w-full bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-right text-white font-mono text-xs focus:outline-none focus:border-indigo-400/60"
+                    onChange={(v) => onParamsChange({ fixedHeight: v })}
+                    min={8}
+                    max={4096}
+                    className={INPUT_CLASS}
                   />
                 </div>
               </div>
@@ -193,8 +325,11 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
           </section>
 
           {/* Render mode */}
-          <section>
-            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Rendu</h2>
+          <section className={params.fixedResolution ? "opacity-40 pointer-events-none" : ""}>
+            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+              Rendu
+              {params.fixedResolution && <span className="text-[10px] normal-case tracking-normal font-normal ml-1">(fixe = CPU)</span>}
+            </h2>
             <div className="flex gap-1.5">
               {([
                 { value: "auto", label: "Auto" },
@@ -205,7 +340,7 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
                   key={opt.value}
                   onClick={() => onParamsChange({ renderMode: opt.value })}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-all ${
-                    params.renderMode === opt.value
+                    (params.fixedResolution ? opt.value === "cpu" : params.renderMode === opt.value)
                       ? "bg-white/15 border border-white/20 text-white"
                       : "bg-white/5 border border-transparent text-white/60 hover:bg-white/10"
                   }`}
@@ -217,8 +352,11 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
           </section>
 
           {/* CPU Resolution */}
-          <section>
-            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Résolution CPU</h2>
+          <section className={params.fixedResolution ? "opacity-40 pointer-events-none" : ""}>
+            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
+              Résolution CPU
+              {params.fixedResolution && <span className="text-[10px] normal-case tracking-normal font-normal ml-1">(fixe = pleine)</span>}
+            </h2>
             <div className="flex gap-1.5">
               {([
                 { value: 1, label: "Pleine", desc: "1x" },
@@ -229,7 +367,7 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
                   key={opt.value}
                   onClick={() => onParamsChange({ cpuResolution: opt.value })}
                   className={`flex-1 px-2 py-1.5 rounded-lg text-xs transition-all ${
-                    params.cpuResolution === opt.value
+                    (params.fixedResolution ? opt.value === 1 : params.cpuResolution === opt.value)
                       ? "bg-white/15 border border-white/20 text-white"
                       : "bg-white/5 border border-transparent text-white/60 hover:bg-white/10"
                   }`}
@@ -256,16 +394,12 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
                   <span className="text-[10px] text-white/40">Verrouiller</span>
                 </label>
               </div>
-              <input
-                type="number"
-                min="1"
-                max="100000"
+              <NumberInput
                 value={params.maxIterations}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value);
-                  if (!isNaN(v) && v >= 1) onParamsChange({ maxIterations: v });
-                }}
-                className="w-20 bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-right text-white font-mono text-xs focus:outline-none focus:border-indigo-400/60"
+                onChange={(v) => onParamsChange({ maxIterations: v })}
+                min={1}
+                max={100000}
+                className={INPUT_SMALL_CLASS}
               />
             </div>
             <input
@@ -277,22 +411,22 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
               onChange={(e) => onParamsChange({ maxIterations: parseInt(e.target.value) })}
               className="w-full"
             />
+            <div className="flex gap-1 mt-1.5">
+              {[-5, -1, 1, 5].map((delta) => (
+                <button
+                  key={delta}
+                  onClick={() => onParamsChange({ maxIterations: Math.max(1, params.maxIterations + delta) })}
+                  className="flex-1 px-1 py-0.5 rounded text-[10px] font-mono bg-white/5 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all"
+                >
+                  {delta > 0 ? `+${delta}` : delta}
+                </button>
+              ))}
+            </div>
           </section>
 
           {/* Color scheme */}
           <section>
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider">Palette de couleurs</h2>
-              <label className="flex items-center gap-1 cursor-pointer" title="Mode binaire (noir/blanc)">
-                <input
-                  type="checkbox"
-                  checked={params.binaryColor}
-                  onChange={(e) => onParamsChange({ binaryColor: e.target.checked })}
-                  className="accent-indigo-500"
-                />
-                <span className="text-[10px] text-white/40">Binaire</span>
-              </label>
-            </div>
+            <h2 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Palette de couleurs</h2>
             <div className={`grid grid-cols-2 gap-1.5 ${params.binaryColor ? "opacity-40 pointer-events-none" : ""}`}>
               {COLOR_SCHEMES.map((cs) => (
                 <button
@@ -336,8 +470,7 @@ export default function ControlPanel({ params, onParamsChange, isOpen, onToggle 
             <p><strong className="text-white/50">Glisser</strong> pour déplacer</p>
             <p><strong className="text-white/50">Molette</strong> pour zoomer</p>
           </section>
-        </div>
       </div>
-    </>
+    </div>
   );
 }

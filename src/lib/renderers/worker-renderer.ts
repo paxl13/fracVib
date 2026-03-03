@@ -107,8 +107,7 @@ export class WorkerRenderer implements FractalRenderer {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  resize(width: number, height: number): void {
+  resize(_width: number, _height: number): void {
     // Canvas size is set in render()
   }
 

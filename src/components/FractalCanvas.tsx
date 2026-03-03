@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFractalRenderer } from "@/lib/use-fractal-renderer";
 import type { FractalParams } from "@/lib/fractal-worker";
@@ -37,13 +35,6 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
   const zoomCenterRef = useRef({ mx: 0.5, my: 0.5 });
 
   const { activeBackend, isRendering } = useFractalRenderer(canvasRef, params);
-
-  // Compute complex plane bounds
-  const scale = 4 / (params.width * params.zoom);
-  const xMin = params.centerX - (params.width / 2) * scale;
-  const xMax = params.centerX + (params.width / 2) * scale;
-  const yMin = params.centerY - (params.height / 2) * scale;
-  const yMax = params.centerY + (params.height / 2) * scale;
 
   // Sync zoom refs when zoom changes externally (e.g. from panel buttons)
   useEffect(() => {
@@ -375,10 +366,6 @@ export default function FractalCanvas({ params, onParamsChange }: Props) {
           {params.zoom < 1000
             ? params.zoom.toFixed(1)
             : Math.round(params.zoom).toLocaleString()}x
-          <br />
-          <span className="text-white/40">
-            x:[{xMin.toFixed(4)}, {xMax.toFixed(4)}] y:[{yMin.toFixed(4)}, {yMax.toFixed(4)}]
-          </span>
         </div>
       </div>
     </div>

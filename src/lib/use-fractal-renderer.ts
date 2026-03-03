@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import type { FractalParams } from "./fractal-worker";
 import type { BackendType, FractalRenderer } from "./renderers/types";
@@ -109,12 +107,13 @@ export function useFractalRenderer(
       const mainCanvas = canvasRef.current;
       if (!mainCanvas) return;
 
-      // Decide backend based on renderMode
-      const mode = params.renderMode;
+      // Decide backend based on renderMode (fixed resolution always uses CPU)
       let useGpu: boolean;
-      if (mode === "gpu") {
+      if (params.fixedResolution) {
+        useGpu = false;
+      } else if (params.renderMode === "gpu") {
         useGpu = !!gpuRef.current;
-      } else if (mode === "cpu") {
+      } else if (params.renderMode === "cpu") {
         useGpu = false;
       } else {
         // auto: use GPU up to zoom limit
@@ -152,12 +151,26 @@ export function useFractalRenderer(
           offscreen.style.zIndex = "1";
           container.appendChild(offscreen);
         }
+        // Size the offscreen canvas: letterbox/pillarbox in fixed resolution mode
+        if (params.fixedResolution && container) {
+          const cr = container.getBoundingClientRect();
+          const scale = Math.min(cr.width / params.fixedWidth, cr.height / params.fixedHeight);
+          offscreen.style.width = `${Math.floor(params.fixedWidth * scale)}px`;
+          offscreen.style.height = `${Math.floor(params.fixedHeight * scale)}px`;
+          offscreen.style.inset = "0";
+          offscreen.style.margin = "auto";
+        } else {
+          offscreen.style.width = "100%";
+          offscreen.style.height = "100%";
+          offscreen.style.inset = "0";
+          offscreen.style.margin = "";
+        }
         offscreen.style.display = "";
         // Keep main canvas in layout (for events) but invisible
         mainCanvas.style.opacity = "0";
 
-        // Reduce resolution for CPU rendering
-        const s = params.cpuResolution;
+        // Reduce resolution for CPU rendering (full res when fixed resolution is active)
+        const s = params.fixedResolution ? 1 : params.cpuResolution;
         const cpuParams = {
           ...params,
           width: Math.floor(params.width * s),
